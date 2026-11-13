@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Penaltı Ustası</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#142b22;color:white;font-family:Arial,sans-serif;text-align:center;touch-action:manipulation}
+h2{margin:12px 0 4px}
+#turnBanner{width:min(96vw,700px);margin:8px auto;padding:12px 8px;border:3px solid #ffe34d;border-radius:14px;background:#552b9b;color:#fff;font-size:clamp(21px,5vw,30px);font-weight:900;letter-spacing:.5px;text-shadow:2px 2px 0 #24104b;box-shadow:0 0 14px #ffe34d88}
+#gameWrap{position:relative;width:min(96vw,700px);margin:0 auto}
+#game{display:block;width:100%;height:auto;margin:0 auto;background:#287d3b;border:3px solid #d9e6d8;border-radius:12px;touch-action:none}
+#announcement{position:absolute;left:50%;top:62%;transform:translate(-50%,-50%) scale(.45);width:92%;text-align:center;font-size:clamp(30px,8vw,62px);line-height:1.08;font-weight:1000;color:#ffe34d;-webkit-text-stroke:1px #39205f;text-shadow:3px 4px 0 #24104b,0 0 18px #fff;opacity:0;pointer-events:none;z-index:5}
+#announcement.show{animation:announcePop 1.7s ease-in-out forwards}
+@keyframes announcePop{0%{opacity:0;transform:translate(-50%,-50%) scale(.35)}18%{opacity:1;transform:translate(-50%,-50%) scale(1.18)}35%{transform:translate(-50%,-50%) scale(.94)}55%{transform:translate(-50%,-50%) scale(1.08);opacity:1}82%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-50%) scale(.75)}}
+.panel{width:min(96vw,700px);margin:10px auto;padding:10px;background:#203c31;border-radius:12px}
+#role{font-size:20px;font-weight:bold;color:#ffdf55}#aimPad{width:150px;height:150px;border:4px solid #f3f3f3;border-radius:50%;margin:8px auto 10px;position:relative;background:radial-gradient(circle,#3f7955,#21452f);touch-action:none}
+#knob{width:30px;height:30px;border-radius:50%;background:#ffd83d;border:3px solid #fff;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);box-shadow:0 2px 8px #0008;pointer-events:none}
+button{background:#ffca28;color:#222;border:0;border-radius:12px;padding:13px 30px;font-size:19px;font-weight:bold}
+small{display:block;color:#d8e8dd;margin:4px}#result{font-weight:900;min-height:34px;margin-top:9px;font-size:22px}
+#result.pop{animation:resultPop .65s ease-in-out 3}
+@keyframes resultPop{0%,100%{transform:scale(1);color:#fff}50%{transform:scale(1.35);color:#ffe34d;text-shadow:0 0 12px #ffe34d}}
+#score{margin:6px;font-weight:bold}
+</style>
+</head>
+<body>
+<h2>⚽ PENALTI USTASI</h2>
+<div id="turnBanner">ŞUT SIRASI SENDE!</div>
+<div id="gameWrap"><canvas id="game" width="700" height="430"></canvas><div id="announcement"></div></div>
+<div class="panel">
+ <div id="role">SIRA SENDE: ŞUT ÇEK!</div>
+ <div id="score">Sen: 0 | Kaleci: 0</div>
+ <small id="instruction">Sarı noktayı sürükle, topun gideceği yeri seç.</small>
+ <div id="aimPad"><div id="knob"></div></div>
+ <button id="action">ŞUT ÇEK!</button>
+ <div id="result">Önce sen şut çekeceksin!</div>
+</div>
+<script>
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const pad=document.getElementById('aimPad'),knob=document.getElementById('knob');
+const roleEl=document.getElementById('role'),instruction=document.getElementById('instruction');
+const turnBanner=document.getElementById('turnBanner');
+const announcement=document.getElementById('announcement');
+const action=document.getElementById('action'),result=document.getElementById('result'),scoreEl=document.getElementById('score');
+let aimX=0,aimY=0,busy=false,ball=null,keeper=null,phase='shoot',playerScore=0,keeperScore=0;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function goalPoint(x=aimX,y=aimY){return{x:350+x*260,y:110+y*105}}
+function draw(){
+ ctx.clearRect(0,0,700,430);ctx.fillStyle='#287d3b';ctx.fillRect(0,0,700,430);
+ ctx.strokeStyle='#ffffff55';ctx.lineWidth=3;ctx.strokeRect(18,18,664,394);
+ ctx.beginPath();ctx.arc(350,210,75,0,Math.PI*2);ctx.stroke();
+ ctx.fillStyle='#e9f0e8';ctx.fillRect(145,35,410,12);ctx.fillRect(145,35,10,130);ctx.fillRect(545,35,10,130);
+ ctx.strokeStyle='#ffffffaa';ctx.lineWidth=2;
+ for(let x=155;x<=545;x+=26){ctx.beginPath();ctx.moveTo(x,47);ctx.lineTo(x,160);ctx.stroke()}
+ for(let y=65;y<=160;y+=23){ctx.beginPath();ctx.moveTo(155,y);ctx.lineTo(545,y);ctx.stroke()}
+ let kx=keeper?keeper.x:(phase==='defend'?goalPoint().x:350),
+     ky=keeper?keeper.y:(phase==='defend'?Math.max(88,goalPoint().y):115),
+     tilt=keeper?keeper.tilt:(phase==='defend'?aimX*.5:0);
+ ctx.save();ctx.translate(kx,ky);ctx.rotate(tilt);
+ ctx.fillStyle=keeper&&keeper.user?'#42c9ff':'#ffb52e';ctx.fillRect(-18,-20,36,45);
+ ctx.fillStyle='#f1c49b';ctx.beginPath();ctx.arc(0,-34,13,0,Math.PI*2);ctx.fill();
+ ctx.strokeStyle='#f1c49b';ctx.lineWidth=11;ctx.lineCap='round';ctx.beginPath();
+ ctx.moveTo(-13,-10);ctx.lineTo(-38,-28);ctx.moveTo(13,-10);ctx.lineTo(38,-28);ctx.stroke();ctx.restore();
+ if(!busy){const gp=goalPoint();ctx.strokeStyle=phase==='shoot'?'#ffe34d':'#42c9ff';ctx.lineWidth=4;ctx.beginPath();ctx.arc(gp.x,gp.y,12,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.moveTo(gp.x-18,gp.y);ctx.lineTo(gp.x+18,gp.y);ctx.moveTo(gp.x,gp.y-18);ctx.lineTo(gp.x,gp.y+18);ctx.stroke()}
+ ctx.fillStyle='#e8f0ff';ctx.beginPath();ctx.arc(350,355,15,0,Math.PI*2);ctx.fill();ctx.fillStyle='#253d87';ctx.fillRect(337,370,26,38);
+ let bx=ball?ball.x:350,by=ball?ball.y:405,br=ball?ball.r:10;ctx.fillStyle='white';ctx.beginPath();ctx.arc(bx,by,br,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#222';ctx.lineWidth=2;ctx.stroke();
+}
+function updateUI(){
+ if(phase==='shoot'){
+  roleEl.textContent='SIRA SENDE: ŞUT ÇEK!';turnBanner.textContent='⚽ ŞUT SIRASI SENDE!';
+  instruction.textContent='Sarı noktayı sürükle, topun gideceği yeri seç.';action.textContent='ŞUT ÇEK!';
+ }else{
+  roleEl.textContent='SIRA SENDE: KALECİ OL!';turnBanner.textContent='🧤 KURTARIŞ SIRASI SENDE!';
+  instruction.textContent='Sarı noktayı topun geleceğini düşündüğün yere götür ve kurtarış yap!';action.textContent='KURTARIŞ YAP!';
+ }
+ knob.style.left=(75+aimX*54)+'px';knob.style.top=(75+aimY*54)+'px';
+ scoreEl.textContent=`Sen: ${playerScore} | Rakip: ${keeperScore}`;
+ draw();
+}
+function setAim(e){
+ const r=pad.getBoundingClientRect(),dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2),max=r.width*.36,len=Math.hypot(dx,dy),s=len>max?max/len:1;
+ aimX=clamp(dx*s/max,-1,1);aimY=clamp(dy*s/max,-1,1);updateUI();
+}
+let dragging=false;
+pad.addEventListener('pointerdown',e=>{dragging=true;pad.setPointerCapture(e.pointerId);setAim(e)});
+pad.addEventListener('pointermove',e=>{if(dragging)setAim(e)});
+pad.addEventListener('pointerup',()=>dragging=false);pad.addEventListener('pointercancel',()=>dragging=false);
+function announce(message){
+ announcement.textContent=message;
+ announcement.classList.remove('show');void announcement.offsetWidth;
+ announcement.classList.add('show');
+}
+function showResult(message){
+ result.textContent=message;result.classList.remove('pop');void result.offsetWidth;result.classList.add('pop');
+ announce(message);
+}
+function animateBall(target,done){
+ let t=0;function frame(){t=Math.min(1,t+.035);ball={x:350+(target.x-350)*t,y:405+(target.y-405)*t-55*Math.sin(Math.PI*t),r:10-2*t};draw();
+ if(t<1)requestAnimationFrame(frame);else setTimeout(()=>{ball=null;done()},400)}frame();
+}
+action.addEventListener('click',()=>{
+ if(busy)return;busy=true;action.disabled=true;
+ if(phase==='shoot'){
+  result.textContent='Şut çekiliyor...';announce('ŞUT!');
+  const gp=goalPoint(),lane=[-1,0,1][Math.floor(Math.random()*3)];
+  keeper={x:350+lane*125,y:118,tilt:lane*.45,user:false};
+  const saved=Math.abs(gp.x-keeper.x)<68&&gp.y>75;
+  animateBall(gp,()=>{
+   if(saved){showResult('🧤 Rakip kaleci kurtardı!');keeperScore++}
+   else{showResult('GOOOL! 🎉');playerScore++}
+   phase='defend';aimX=0;aimY=0;keeper=null;busy=false;action.disabled=false;updateUI();
+  });
+ }else{
+  result.textContent='Rakip şut çekiyor!';announce('RAKİP ŞUT ÇEKİYOR!');const shotX=350+([-1,0,1][Math.floor(Math.random()*3)])*175+(Math.random()*50-25);
+  const shotY=75+Math.random()*75,target={x:shotX,y:shotY};
+  const dive=goalPoint();
+  // Bu turda sarı nokta kalecinin atlayacağı yeri belirler.
+  keeper={x:dive.x,y:Math.max(88,dive.y),tilt:aimX*.5,user:true};
+  const saved=Math.hypot(target.x-dive.x,(target.y-dive.y)*1.5)<88;
+  animateBall(target,()=>{
+   if(saved){showResult('🧤 HARİKA KURTARIŞ!');playerScore++}
+   else{showResult('Rakip gol attı!');keeperScore++}
+   phase='shoot';aimX=0;aimY=0;keeper=null;busy=false;action.disabled=false;updateUI();
+  });
+ }
+});
+updateUI();
+</script>
+</body></html>
